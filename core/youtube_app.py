@@ -5,65 +5,39 @@ import os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QMenu, QToolButton
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile, QWebEnginePage, QWebEngineSettings
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
-from PyQt5.QtCore import QUrl, QEventLoop, QTimer, QStandardPaths, QThread, pyqtSignal, QThreadPool, Qt
+from PyQt5.QtCore import QUrl, QEventLoop, QTimer, QStandardPaths, QThread, pyqtSignal, QThreadPool, Qt, QSize
 from PyQt5.QtMultimedia import QMediaPlayer
-from PyQt5.QtGui import QFont, QIcon  # Add this import
+from PyQt5.QtGui import QFont, QIcon, QPixmap
 import yt_dlp
-from video_player import CustomVideoPlayer
-from file_explorer import FileExplorerDialog
-
-class URLInterceptor(QWebEngineUrlRequestInterceptor):
-    def __init__(self, app):
-        super().__init__()
-        self.app = app
-
-    def interceptRequest(self, info): # This will block the browser behind the custom player playing the video
-        url = info.requestUrl().toString()
-        if "watch?v=" in url and not info.resourceType() == 0: 
-            info.block(True)
-
-class CustomWebPage(QWebEnginePage):
-    def __init__(self, profile, parent=None):
-        super().__init__(profile, parent)
-        self.featurePermissionRequested.connect(self.handlePermissionRequest)
-
-    def handlePermissionRequest(self, url, feature):
-        self.setFeaturePermission(url, feature, QWebEnginePage.PermissionGrantedByUser)
-
-class CommentFetcher(QThread):
-    comments_ready = pyqtSignal(list)
-    
-    def __init__(self, video_id):
-        super().__init__()
-        self.video_id = video_id
-
-    def run(self):
-        try:
-            ydl_opts = {
-                'quiet': True,
-                'extract_flat': False,
-                'getcomments': True,
-                'max_comments': 50,
-                'comment_sort': ['top'],
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(
-                    f'https://www.youtube.com/watch?v={self.video_id}',
-                    download=False
-                )
-                comments = info.get('comments', [])[:50] if info else []
-                self.comments_ready.emit(comments)
-        except Exception as e:
-            print(f"Error fetching comments: {str(e)}")
-            self.comments_ready.emit([])
+from core.video_player import CustomVideoPlayer
+from core.file_explorer import FileExplorerDialog
+from utils.URLIntercept import URLInterceptor 
+from utils.CustomPermissions import CustomWebPage
+from utils.CommentFetcher import CommentFetcher
+# =============================================
+#   _______  __     __  _____  
+#  |__   __| \ \   / / |  __ \ 
+#     | |     \ \_/ /  | |__) |
+#     | |      \   /   |  ___/ 
+#     | |       | |    | |     
+#     |_|       |_|    |_|     
+#                               
+#      Tom's YouTube Premium
+# =============================================
+# An application created to not have to pay for YouTube Premium and 
+# still get the benefits of it. Plus added downloader features for videos and audio.
+# Created by: Tom
+# Version: 1.0
+# Stores cookies/cache in the AppData folder
+# =============================================
 
 class YouTubeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Set window icon - update icon path
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'logo.png')
+        # Set window icon - use correct relative path
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(script_dir, 'images', 'logo.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         else:
@@ -250,6 +224,15 @@ class YouTubeApp(QMainWindow):
             'Connection': 'keep-alive',
         }
 
+        # Update back button icon path
+        self.back_to_youtube = QPushButton()
+        icon_path = os.path.join(script_dir, 'images', 'backarrow.png')
+        if os.path.exists(icon_path):
+            pixmap = QPixmap(icon_path)
+            scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.back_to_youtube.setIcon(QIcon(scaled_pixmap))
+        self.back_to_youtube.setIconSize(QSize(32, 32))
+
     def handle_playback_finished(self, state):
         """Handle video playback completion"""
         if state == QMediaPlayer.StoppedState:
@@ -291,21 +274,25 @@ class YouTubeApp(QMainWindow):
 
     def download_and_play_video(self, video_id):
         try:
-            # Get FFmpeg executable path
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Get FFmpeg executable path - update to correct path
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
             ffmpeg_exe = os.path.join(script_dir, 'ffmpeg', 'bin', 'ffmpeg.exe')
+            
             if not os.path.exists(ffmpeg_exe):
                 print(f"FFmpeg not found at: {ffmpeg_exe}")
-                return
+                # Continue anyway as we don't need FFmpeg for playback
             
             base_url = f'https://www.youtube.com/watch?v={video_id}'
             ydl_opts = {
-                'ffmpeg_location': ffmpeg_exe,
                 'format': 'bestvideo[height<=?2160][vcodec^=avc1]+bestaudio/best',
                 'quiet': False,
                 'no_warnings': False,
                 'logger': logging.getLogger(),
             }
+            
+            # Add FFmpeg path only if it exists
+            if os.path.exists(ffmpeg_exe):
+                ydl_opts['ffmpeg_location'] = ffmpeg_exe
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 print(f"Fetching video info for: {base_url}")
@@ -365,7 +352,8 @@ class YouTubeApp(QMainWindow):
 
     def open_downloads_folder(self):
         """Open the downloads folder in custom file explorer"""
-        downloads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'downloads')
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
+        downloads_dir = os.path.join(script_dir, 'downloads')
         if not os.path.exists(downloads_dir):
             os.makedirs(downloads_dir)
         dialog = FileExplorerDialog(downloads_dir, "Downloaded Videos", self)
@@ -373,7 +361,8 @@ class YouTubeApp(QMainWindow):
 
     def open_audio_folder(self):
         """Open the mp3 folder in custom file explorer"""
-        mp3_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mp3')
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
+        mp3_dir = os.path.join(script_dir, 'mp3')
         if not os.path.exists(mp3_dir):
             os.makedirs(mp3_dir)
         dialog = FileExplorerDialog(mp3_dir, "Downloaded Audio", self)
@@ -384,14 +373,12 @@ def main():
     logging.basicConfig(level=logging.INFO)
     app = QApplication(sys.argv)
     
-    # Set application-wide icon for taskbar - update icon path
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'logo.png')
+    # Set application-wide icon for taskbar with correct path
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    icon_path = os.path.join(script_dir, 'images', 'logo.png')
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
     window = YouTubeApp()
     window.show()
     sys.exit(app.exec_())
-
-if __name__ == "__main__":
-    main()

@@ -1,30 +1,19 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                           QSlider, QStyle, QLabel, QSizePolicy, QScrollArea, 
-                          QTextBrowser, QToolTip, QApplication, QFileDialog)  # Add QFileDialog
+                          QTextBrowser, QToolTip, QApplication, QFileDialog) 
 from PyQt5.QtCore import Qt, QTime
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtCore import QUrl, QSize, QTimer, QRect, QThread  # Added QThread
+from PyQt5.QtCore import QUrl, QSize, QTimer, QRect, QThread 
 from PyQt5.QtGui import QIcon, QPainter, QColor, QPixmap, QCursor
 from PyQt5.QtGui import QPainter, QIcon, QColor
 from PyQt5.QtCore import Qt, QTime, QSize
 import os
 import yt_dlp
-from file_explorer import FileExplorerDialog
+from core.file_explorer import FileExplorerDialog
+from utils.Downloader import Downloader
 
-class DownloadThread(QThread):
-    def __init__(self, url, ydl_opts):
-        super().__init__()
-        self.url = url
-        self.ydl_opts = ydl_opts
-
-    def run(self):
-        try:
-            with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
-                ydl.download([self.url])
-        except Exception as e:
-            print(f"Download error: {str(e)}")
-# The video player
+# The video player class - absolute cancer to work with so goodluck!
 class CustomVideoPlayer(QWidget):
     def __init__(self):
         super().__init__()
@@ -39,12 +28,14 @@ class CustomVideoPlayer(QWidget):
         header_layout = QHBoxLayout(self.header_widget)
         header_layout.setContentsMargins(15, 12, 15, 12)
         
-        # Back button setup with custom image - update image path
+        # Back button setup with correct path
         self.back_to_youtube = QPushButton()
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'backarrow.png')
-        pixmap = QPixmap(icon_path)
-        scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.back_to_youtube.setIcon(QIcon(scaled_pixmap))
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
+        icon_path = os.path.join(script_dir, 'images', 'backarrow.png')
+        if os.path.exists(icon_path):
+            pixmap = QPixmap(icon_path)
+            scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.back_to_youtube.setIcon(QIcon(scaled_pixmap))
         self.back_to_youtube.setIconSize(QSize(32, 32))
         self.back_to_youtube.setStyleSheet("""
             QPushButton {
@@ -498,7 +489,7 @@ class CustomVideoPlayer(QWidget):
             self.set_white_icon(self.play_button, QStyle.SP_MediaPlay)
 
     def set_video_info(self, title, description):
-        if title:
+        if (title):
             self.title_label.setText(title)
             self.title_label.setVisible(True)
         else:
@@ -550,114 +541,43 @@ class CustomVideoPlayer(QWidget):
         if not self.youtube_url:
             return
 
-        try:
-            # Create project downloads directory
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            downloads_dir = os.path.join(script_dir, 'downloads')
-            if not os.path.exists(downloads_dir):
-                os.makedirs(downloads_dir)
-                print(f"Created downloads directory at: {downloads_dir}")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.download_button.setEnabled(False)
+        self.download_button.setToolTip("Downloading...")
 
-            # Get FFmpeg path
-            ffmpeg_path = os.path.join(script_dir, 'ffmpeg', 'bin', 'ffmpeg.exe')
-            if not os.path.exists(ffmpeg_path):
-                print(f"FFmpeg not found at: {ffmpeg_path}")
-                return
-            
-            print(f"Using FFmpeg from: {ffmpeg_path}")
-
-            ydl_opts = {
-                'ffmpeg_location': ffmpeg_path,
-                'format': 'best',  # Simplified format selection
-                'outtmpl': os.path.join(downloads_dir, '%(title)s.%(ext)s'),
-                'merge_output_format': 'mp4',
-                'writethumbnail': True,
-                'keepvideo': True,
-                'quiet': False,
-                'verbose': True,  # Add verbose output for debugging
-                'no_warnings': False,
-                'postprocessors': [{
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': 'mp4',
-                }],
-            }
-
-            print(f"Starting download to: {downloads_dir}")
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            self.download_button.setEnabled(False)
-            self.download_button.setToolTip("Downloading...")
-
-            self.download_thread = DownloadThread(self.youtube_url, ydl_opts)
-            self.download_thread.finished.connect(self.download_finished)
-            self.download_thread.start()
-
-        except Exception as e:
-            print(f"Download setup error: {str(e)}")
-            QApplication.restoreOverrideCursor()
-            self.download_button.setEnabled(True)
-
-    def download_finished(self):
-        """Handle download completion"""
-        QApplication.restoreOverrideCursor()
-        self.download_button.setEnabled(True)
-        self.download_button.setToolTip("Download Complete!")
-        
-        # Show custom file explorer
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        downloads_dir = os.path.join(script_dir, 'downloads')
-        dialog = FileExplorerDialog(downloads_dir, "Downloaded Videos", self)
-        dialog.exec_()
-        
-        QTimer.singleShot(3000, lambda: self.download_button.setToolTip("Download Video"))
+        self.download_thread = Downloader(self.youtube_url, 'video')
+        self.download_thread.finished.connect(self.download_finished)
+        self.download_thread.error.connect(self.download_error)
+        self.download_thread.start()
 
     def download_mp3(self):
         """Download the current video as MP3"""
         if not self.youtube_url:
             return
 
-        try:
-            # Create project mp3 directory
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            mp3_dir = os.path.join(script_dir, 'mp3')
-            if not os.path.exists(mp3_dir):
-                os.makedirs(mp3_dir)
-                print(f"Created MP3 directory at: {mp3_dir}")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.mp3_button.setEnabled(False)
+        self.mp3_button.setToolTip("Downloading MP3...")
 
-            # Get FFmpeg path
-            ffmpeg_path = os.path.join(script_dir, 'ffmpeg', 'bin', 'ffmpeg.exe')
-            if not os.path.exists(ffmpeg_path):
-                print(f"FFmpeg not found at: {ffmpeg_path}")
-                return
-            
-            print(f"Using FFmpeg from: {ffmpeg_path}")
+        self.mp3_thread = Downloader(self.youtube_url, 'mp3')
+        self.mp3_thread.finished.connect(self.mp3_download_finished)
+        self.mp3_thread.error.connect(self.download_error)
+        self.mp3_thread.start()
 
-            ydl_opts = {
-                'ffmpeg_location': ffmpeg_path,
-                'format': 'bestaudio/best',
-                'outtmpl': os.path.join(mp3_dir, '%(title)s.%(ext)s'),
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '320',
-                }],
-                'quiet': False,
-                'verbose': True,
-                'no_warnings': False,
-            }
-
-            print(f"Starting MP3 download to: {mp3_dir}")
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            self.mp3_button.setEnabled(False)
-            self.mp3_button.setToolTip("Downloading MP3...")
-
-            self.mp3_thread = DownloadThread(self.youtube_url, ydl_opts)
-            self.mp3_thread.finished.connect(self.mp3_download_finished)
-            self.mp3_thread.start()
-
-        except Exception as e:
-            print(f"MP3 download setup error: {str(e)}")
-            QApplication.restoreOverrideCursor()
-            self.mp3_button.setEnabled(True)
+    def download_finished(self):
+        """Handle video download completion"""
+        QApplication.restoreOverrideCursor()
+        self.download_button.setEnabled(True)
+        self.download_button.setToolTip("Download Complete!")
+        
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
+        downloads_dir = os.path.join(script_dir, 'downloads')
+        if not os.path.exists(downloads_dir):
+            os.makedirs(downloads_dir)
+        dialog = FileExplorerDialog(downloads_dir, "Downloaded Videos", self)
+        dialog.exec_()
+        
+        QTimer.singleShot(3000, lambda: self.download_button.setToolTip("Download Video"))
 
     def mp3_download_finished(self):
         """Handle MP3 download completion"""
@@ -665,10 +585,18 @@ class CustomVideoPlayer(QWidget):
         self.mp3_button.setEnabled(True)
         self.mp3_button.setToolTip("MP3 Download Complete!")
         
-        # Show custom file explorer
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
         mp3_dir = os.path.join(script_dir, 'mp3')
+        if not os.path.exists(mp3_dir):
+            os.makedirs(mp3_dir)
         dialog = FileExplorerDialog(mp3_dir, "Downloaded Audio", self)
         dialog.exec_()
         
         QTimer.singleShot(3000, lambda: self.mp3_button.setToolTip("Download MP3"))
+
+    def download_error(self, error_message):
+        """Handle download errors"""
+        QApplication.restoreOverrideCursor()
+        self.download_button.setEnabled(True)
+        self.mp3_button.setEnabled(True)
+        print(f"Download error: {error_message}")
