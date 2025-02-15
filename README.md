@@ -43,7 +43,7 @@ python main.py
 Enjoy an ad-free, premium YouTube experience! 🚀
 
 ## 📜 License
-This project is for educational purposes only. Please ensure compliance with YouTube's Terms of Service when using this tool.
+This project is for educational purposes only and open source. Feel free to modify and please submit any useful enhancements!
 
 ## 🤝 Contributing
 Pull requests are welcome! If you encounter any issues, feel free to submit them via the Issues tab.
