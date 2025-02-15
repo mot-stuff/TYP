@@ -12,6 +12,8 @@ import sys
 class CustomVideoPlayer(QWidget):
     def __init__(self):
         super().__init__()
+        # Add always-on-top flag
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)

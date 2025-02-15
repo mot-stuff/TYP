@@ -34,7 +34,7 @@ from utils.CommentFetcher import CommentFetcher
 class YouTubeApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         # Set window icon - use correct relative path
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         icon_path = os.path.join(script_dir, 'images', 'logo.png')
