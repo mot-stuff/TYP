@@ -19,6 +19,7 @@
 
 ## 📸 Screenshots
 <img src="https://github.com/user-attachments/assets/fb2f8880-2cac-4a39-9bf1-19761e41a62b" alt="TYP screenshot" width="400"> <img src="https://github.com/user-attachments/assets/af1becda-7a35-4319-b15d-d62d75a61f9f" alt="Custom Image" width="400">
+<img src="https://github.com/user-attachments/assets/d5f23172-e1cd-4506-81d3-bc1f4f88ceaf" alt="Custom Image" width="400"> <img src="https://github.com/user-attachments/assets/6aa305a9-ecf4-4737-83d0-4ab8b9a0bacd" alt="Custom Image" width="400">
 
 ## 🛠 Installation
 Follow these steps to set up and run TYP on your machine:
