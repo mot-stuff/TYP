@@ -10,6 +10,7 @@
 - 🔄 **Sync with Google Account** – Maintain your watch history, recommendations, and subscriptions.
 - 📺 **View Comments/Descriptions** - View comments on videos and descriptions for those that like more information intheir player
 - 🖥️ **Resizable/Fullscreen** - View videos at any aspect ratio - the app is stretchable and can go fullscreen!
+- 📽️ **Dynamic Resolution** - Handles dynamic resolutions always picking the best one!
 
 ## 🪛 Upcoming Features
 - Ability to watch Live Streams and Video Premieres.
@@ -24,8 +25,7 @@
 
 
 ## 📝 Random side notes
-- Click the player to pause/play
-- esc to exit fullscreen once in it
+- Esc or F to exit/enter fullscreen
 - only fullscreens to primary monitor right now
 
 ## 🛠 Installation
@@ -39,10 +39,12 @@ git clone https://github.com/yourusername/TYP.git
 cd TYP
 ```
 
-### 2️⃣ Install FFmpeg
+### 2️⃣ Install FFmpeg and VLC
 1. [Download FFmpeg](https://ffmpeg.org/download.html).
 2. Extract the contents into the project directory.
 3. Rename the extracted folder to `ffmpeg`.
+4. [Download VLC](https://www.videolan.org/vlc/).
+5. Install VLC and done!
 
 ### 3️⃣ Set Up a Virtual Environment
 ```sh
