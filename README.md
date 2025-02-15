@@ -8,6 +8,11 @@
 - 📁 **Built-in File Manager** – Organize, play, and manage downloaded content effortlessly.
 - 🔄 **Sync with Google Account** – Maintain your watch history, recommendations, and subscriptions.
 
+## 🪛 Upcoming Features
+- Ability to watch Live Streams and Video Premieres.
+- Download clips of Videos instead of the whole video.
+- Resize media player in saved videos. 
+
 ## 🛠 Installation
 Follow these steps to set up and run TYP on your machine:
 
