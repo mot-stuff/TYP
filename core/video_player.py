@@ -1,18 +1,13 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                           QSlider, QStyle, QLabel, QSizePolicy, QScrollArea, 
                           QTextBrowser, QToolTip, QApplication, QFileDialog) 
-from PyQt5.QtCore import Qt, QTime
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtCore import QUrl, QSize, QTimer, QRect, QThread 
+from PyQt5.QtCore import Qt, QTime, QUrl, QSize, QTimer, QRect, QThread
 from PyQt5.QtGui import QIcon, QPainter, QColor, QPixmap, QCursor
-from PyQt5.QtGui import QPainter, QIcon, QColor
-from PyQt5.QtCore import Qt, QTime, QSize
+import vlc
 import os
-import yt_dlp
 from core.file_explorer import FileExplorerDialog
 from utils.Downloader import Downloader
-
+import sys
 # The video player class - absolute cancer to work with so goodluck!
 class CustomVideoPlayer(QWidget):
     def __init__(self):
@@ -116,14 +111,48 @@ class CustomVideoPlayer(QWidget):
         # Add header to main layout
         self.layout.addWidget(self.header_widget)
         
-        # Video player widget with stretch priority
-        self.media_player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-        self.video_widget = QVideoWidget()
-        self.video_widget.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+        # Initialize VLC with simpler parameters
+        vlc_args = [
+            '--audio-resampler=soxr',  # High quality audio resampler
+            '--file-caching=1000',     # Reduced cache to prevent audio lag
+            '--network-caching=1000',
+            '--live-caching=1000',
+            '--sout-mux-caching=1000'
+        ]
+        
+        try:
+            self.instance = vlc.Instance(' '.join(vlc_args))
+            if not self.instance:
+                self.instance = vlc.Instance()
+            self.media_player = self.instance.media_player_new()
+            
+        except Exception as e:
+            print(f"VLC initialization error: {str(e)}")
+            self.instance = vlc.Instance()
+            self.media_player = self.instance.media_player_new()
+        
+        # Set up event manager
+        self.event_manager = self.media_player.event_manager()
+        self.event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, self.on_playback_finished)
+        
+        # Create container widget for VLC
+        self.video_widget = QWidget()
+        self.video_widget.setStyleSheet("background-color: black;")
         self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.video_widget.setMinimumHeight(500)  # Increased minimum height
-        self.layout.addWidget(self.video_widget, 1)  # Increased stretch factor to 2
-        self.media_player.setVideoOutput(self.video_widget)
+        self.video_widget.setMinimumHeight(500)
+        
+        # Set video widget to use its winId for VLC
+        if sys.platform == "win32":
+            self.media_player.set_hwnd(int(self.video_widget.winId()))
+        else:
+            self.media_player.set_xwindow(int(self.video_widget.winId()))
+            
+        self.layout.addWidget(self.video_widget, 1)
+        
+        # Timer for updating position slider
+        self.update_timer = QTimer()
+        self.update_timer.setInterval(100)
+        self.update_timer.timeout.connect(self.update_position)
         
         # Add click handling to video widget
         self.video_widget.mousePressEvent = self.video_clicked
@@ -185,8 +214,6 @@ class CustomVideoPlayer(QWidget):
         
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.sliderMoved.connect(self.set_position)
-        self.media_player.positionChanged.connect(self.position_changed)
-        self.media_player.durationChanged.connect(self.duration_changed)
         
         # Create volume controls
         self.volume_button = QPushButton()
@@ -274,12 +301,7 @@ class CustomVideoPlayer(QWidget):
 
         # Initialize volume state
         self.previous_volume = 100
-        self.media_player.setVolume(100)
-        self.media_player.volumeChanged.connect(self.update_volume_ui)
-
-        # Add media player error handling
-        self.media_player.error.connect(self.handle_error)
-        self.media_player.stateChanged.connect(self.media_state_changed)
+        self.media_player.audio_set_volume(100)
 
         # Update control buttons styling
         self.play_button.setStyleSheet(button_style)
@@ -358,37 +380,77 @@ class CustomVideoPlayer(QWidget):
         return f"{minutes}:{seconds:02d}"
 
     def play_pause(self):
-        if self.media_player.state() == QMediaPlayer.PlayingState:
+        if self.media_player.is_playing():
             self.media_player.pause()
             self.play_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+            self.update_timer.stop()
         else:
             self.media_player.play()
             self.play_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
+            self.update_timer.start()
 
-    def seek_relative(self, offset):
-        position = self.media_player.position() + offset
-        self.media_player.setPosition(position)
+    def seek_relative(self, offset_ms):
+        """Seek relative to current position"""
+        try:
+            current = self.media_player.get_time()
+            if current >= 0:
+                target = max(0, current + offset_ms)
+                self.seek_to_time(target)
+        except Exception as e:
+            print(f"Relative seek error: {str(e)}")
+
+    def seek_to_time(self, time_ms):
+        """Seek to absolute time in milliseconds"""
+        try:
+            length = self.media_player.get_length()
+            if length > 0:
+                # Keep within bounds
+                time_ms = max(0, min(time_ms, length))
+                self.media_player.set_time(time_ms)
+        except Exception as e:
+            print(f"Absolute seek error: {str(e)}")
 
     def set_position(self, position):
-        self.media_player.setPosition(position)
+        """Seek to the absolute time (in ms) from the slider value"""
+        try:
+            self.seek_to_time(position)
+        except Exception as e:
+            print(f"Set position error: {str(e)}")
 
-    def position_changed(self, position):
-        self.seek_slider.setValue(position)
-        self.time_label.setText(self.format_time(position))
+    def update_position(self):
+        """Update slider range and value using actual video time in ms"""
+        if not self.media_player.is_playing():
+            return
+        try:
+            current_time = self.media_player.get_time()
+            total_length = self.media_player.get_length()
 
-    def duration_changed(self, duration):
-        self.seek_slider.setRange(0, duration)
-        self.duration_label.setText(self.format_time(duration))
+            if current_time >= 0 and total_length > 0:
+                # Set slider range and current value in milliseconds
+                self.seek_slider.blockSignals(True)
+                self.seek_slider.setMaximum(total_length)
+                self.seek_slider.setValue(current_time)
+                self.seek_slider.blockSignals(False)
 
-    def toggle_mute(self):
-        if self.media_player.volume() > 0:
-            self.previous_volume = self.media_player.volume()
-            self.media_player.setVolume(0)
-        else:
-            self.media_player.setVolume(self.previous_volume)
+                # Update displayed time
+                self.time_label.setText(self.format_time(current_time))
+                self.duration_label.setText(self.format_time(total_length))
+                
+                if current_time % 5000 == 0:  # Every 5 seconds
+                    tracks = self.media_player.audio_get_track_description()
+                    if tracks and self.media_player.audio_get_track() <= 0:
+                        self.media_player.audio_set_track(1)
+                    
+        except Exception as e:
+            print(f"Position update error: {str(e)}")
 
     def set_volume(self, volume):
-        self.media_player.setVolume(volume)
+        self.media_player.audio_set_volume(volume)
+
+    def toggle_mute(self):
+        is_muted = self.media_player.audio_get_mute()
+        self.media_player.audio_set_mute(not is_muted)
+        self.update_volume_ui(0 if not is_muted else self.previous_volume)
 
     def update_volume_ui(self, volume):
         self.volume_slider.setValue(volume)
@@ -445,28 +507,72 @@ class CustomVideoPlayer(QWidget):
         full_html = html_template + ''.join(comments_html)
         self.comments_area.setHtml(full_html)
 
-    def play_video(self, stream_url, youtube_url):
+    def play_video(self, stream_urls, youtube_url):
         """Play video with separate stream and share URLs"""
         try:
-            self.current_video_url = stream_url
+            self.current_video_url = stream_urls[0]
             self.youtube_url = youtube_url
+
+            # Common media options
+            media_opts = [
+                f"#duplicate{{"
+                f"dst=display,"
+                f"dst=std{{access=file,mux=wav}}"
+                f"}}"
+            ]
+
+            if len(stream_urls) > 1:
+                # Create a concatenated input string for video and audio
+                input_str = f"input-slave={stream_urls[1]}"
+                media = self.instance.media_new(stream_urls[0], input_str)
+                
+                # Add the media options
+                for opt in media_opts:
+                    media.add_option(opt)
+                
+                # Set the media and start playback
+                self.media_player.set_media(media)
+                self.media_player.audio_set_volume(self.volume_slider.value())
+                
+                # Start playback
+                self.media_player.play()
+                
+                # Force audio track selection after a short delay
+                def select_audio():
+                    tracks = self.media_player.audio_get_track_description()
+                    if tracks:
+                        self.media_player.audio_set_track(1)
+                
+                QTimer.singleShot(500, select_audio)
+                
+            else:
+                # Single stream playback
+                media = self.instance.media_new(stream_urls[0])
+                for opt in media_opts:
+                    media.add_option(opt)
+                self.media_player.set_media(media)
+                self.media_player.audio_set_volume(self.volume_slider.value())
+                self.media_player.play()
             
-            media_content = QMediaContent(QUrl(stream_url))
-            self.media_player.setMedia(media_content)
-            self.media_player.setVolume(self.volume_slider.value())
-            
-            # Set position to start
-            self.media_player.setPosition(0)
-            QTimer.singleShot(100, self.media_player.play)
-            
+            self.update_timer.start()
             self.comments_area.setText("Loading comments...")
             self.comments_area.setVisible(True)
             
         except Exception as e:
             print(f"Playback error: {str(e)}")
 
+    def check_audio_sync(self):
+        """Check and adjust audio sync if needed"""
+        if self.media_player.is_playing():
+            video_pos = self.media_player.get_time()
+            if video_pos > 0:
+                # Reset audio timing if significantly out of sync
+                self.media_player.set_time(video_pos)
+                self.media_player.audio_set_delay(0)
+
     def stop(self):
         self.media_player.stop()
+        self.update_timer.stop()
 
     def handle_error(self):
         error = self.media_player.error()
@@ -600,3 +706,11 @@ class CustomVideoPlayer(QWidget):
         self.download_button.setEnabled(True)
         self.mp3_button.setEnabled(True)
         print(f"Download error: {error_message}")
+
+    def on_playback_finished(self, event):
+        """Handle video playback completion"""
+        self.stop()
+        self.update_timer.stop()
+        back_button = self.get_back_button()
+        if (back_button):
+            back_button.click()

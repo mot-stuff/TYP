@@ -208,7 +208,6 @@ class YouTubeApp(QMainWindow):
         # Create video player
         self.video_player = CustomVideoPlayer()
         self.video_player.get_back_button().clicked.connect(self.return_to_youtube)
-        self.video_player.media_player.stateChanged.connect(self.handle_playback_finished)  # Add this line
         self.layout.addWidget(self.video_player)
         self.video_player.hide()
 
@@ -232,13 +231,6 @@ class YouTubeApp(QMainWindow):
             scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.back_to_youtube.setIcon(QIcon(scaled_pixmap))
         self.back_to_youtube.setIconSize(QSize(32, 32))
-
-    def handle_playback_finished(self, state):
-        """Handle video playback completion"""
-        if state == QMediaPlayer.StoppedState:
-            # Check if the video reached the end (not manually stopped)
-            if self.video_player.media_player.position() >= self.video_player.media_player.duration():
-                self.return_to_youtube()
 
     def clear_browser_data(self):
         # Clear various types of browsing data
@@ -274,25 +266,17 @@ class YouTubeApp(QMainWindow):
 
     def download_and_play_video(self, video_id):
         try:
-            # Get FFmpeg executable path - update to correct path
-            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up one level to TYP folder
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             ffmpeg_exe = os.path.join(script_dir, 'ffmpeg', 'bin', 'ffmpeg.exe')
-            
-            if not os.path.exists(ffmpeg_exe):
-                print(f"FFmpeg not found at: {ffmpeg_exe}")
-                # Continue anyway as we don't need FFmpeg for playback
             
             base_url = f'https://www.youtube.com/watch?v={video_id}'
             ydl_opts = {
-                'format': 'bestvideo[height<=?2160][vcodec^=avc1]+bestaudio/best',
+                'format': 'bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',  # Prefer MP4 video and M4A audio
+                'merge_output_format': 'mp4',
                 'quiet': False,
                 'no_warnings': False,
                 'logger': logging.getLogger(),
             }
-            
-            # Add FFmpeg path only if it exists
-            if os.path.exists(ffmpeg_exe):
-                ydl_opts['ffmpeg_location'] = ffmpeg_exe
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 print(f"Fetching video info for: {base_url}")
@@ -305,40 +289,66 @@ class YouTubeApp(QMainWindow):
                 # Check if this is a live stream
                 is_live = info.get('is_live', False)
                 print(f"Is live stream: {is_live}")
-                
-                # Handle format selection
-                formats = info.get('formats', [])
-                formats = [f for f in formats 
-                          if f.get('vcodec', 'none') != 'none' 
-                          and f.get('acodec', 'none') != 'none']
-                
-                if formats:
-                    # Sort by quality metrics
-                    formats.sort(
-                        key=lambda x: (
-                            x.get('height', 0),
-                            x.get('tbr', 0),
-                            x.get('fps', 0)
-                        ),
-                        reverse=True
-                    )
-                    
-                    video_url = formats[0]['url']
-                    print(f"Selected format: {formats[0].get('format_note', '')}, "
-                          f"Resolution: {formats[0].get('height', '')}p, "
-                          f"FPS: {formats[0].get('fps', '')}")
-                else:
-                    print("No suitable format found")
-                    return
 
-                # Start playback
-                self.browser.hide()
-                self.video_player.show()
-                self.video_player.set_video_info(
-                    title=f"🔴 LIVE: {info.get('title', '')}" if is_live else info.get('title', ''),
-                    description=info.get('description', '')
-                )
-                self.video_player.play_video(video_url, base_url)
+                # For live streams, prefer a single combined stream
+                if is_live:
+                    formats = info.get('formats', [])
+                    formats = [f for f in formats if f.get('acodec', 'none') != 'none' 
+                             and f.get('vcodec', 'none') != 'none']
+                    
+                    if formats:
+                        formats.sort(key=lambda x: (x.get('height', 0), x.get('tbr', 0)), reverse=True)
+                        best_format = formats[0]
+                        video_url = best_format['url']
+                        print(f"Using combined format for live: {best_format.get('format_note', '')}")
+                        self.browser.hide()
+                        self.video_player.show()
+                        self.video_player.set_video_info(
+                            title=f"🔴 LIVE: {info.get('title', '')}",
+                            description=info.get('description', '')
+                        )
+                        self.video_player.play_video([video_url], base_url)
+                        return
+
+                # For VODs, use separate streams
+                if 'requested_formats' in info:
+                    formats = info['requested_formats']
+                    video_format = None
+                    audio_format = None
+                    
+                    for fmt in formats:
+                        if fmt.get('vcodec', 'none') != 'none' and not video_format:
+                            video_format = fmt
+                            print(f"Video stream: {fmt.get('format_note', '')}, "
+                                  f"Resolution: {fmt.get('height', '')}p, "
+                                  f"Codec: {fmt.get('vcodec', '')}")
+                        elif fmt.get('acodec', 'none') != 'none' and not audio_format:
+                            audio_format = fmt
+                            print(f"Audio stream: {fmt.get('format_note', '')}, "
+                                  f"Codec: {fmt.get('acodec', '')}")
+
+                    if video_format and audio_format:
+                        self.browser.hide()
+                        self.video_player.show()
+                        self.video_player.set_video_info(
+                            title=info.get('title', ''),
+                            description=info.get('description', '')
+                        )
+                        self.video_player.play_video(
+                            [video_format['url'], audio_format['url']], 
+                            base_url
+                        )
+                    else:
+                        # Fallback to best combined format
+                        video_url = info['url']
+                        print(f"Using combined format: {info.get('format_note', '')}")
+                        self.browser.hide()
+                        self.video_player.show()
+                        self.video_player.set_video_info(
+                            title=info.get('title', ''),
+                            description=info.get('description', '')
+                        )
+                        self.video_player.play_video([video_url], base_url)
 
                 # Fetch comments for VODs only
                 if not is_live:
