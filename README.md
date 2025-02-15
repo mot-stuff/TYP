@@ -43,7 +43,8 @@ cd TYP
 1. [Download FFmpeg](https://ffmpeg.org/download.html).
 2. Extract the contents into the project directory.
 3. Rename the extracted folder to `ffmpeg`.
-4. Download VLC and make sure it is installed! [Download VLC](https://www.videolan.org/vlc/).
+4. [Download VLC](https://www.videolan.org/vlc/).
+5. Install VLC and done!
 
 ### 3️⃣ Set Up a Virtual Environment
 ```sh
