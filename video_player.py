@@ -39,9 +39,10 @@ class CustomVideoPlayer(QWidget):
         header_layout = QHBoxLayout(self.header_widget)
         header_layout.setContentsMargins(15, 12, 15, 12)
         
-        # Back button setup with custom image
+        # Back button setup with custom image - update image path
         self.back_to_youtube = QPushButton()
-        pixmap = QPixmap("backarrow.png")
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'backarrow.png')
+        pixmap = QPixmap(icon_path)
         scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.back_to_youtube.setIcon(QIcon(scaled_pixmap))
         self.back_to_youtube.setIconSize(QSize(32, 32))

@@ -62,8 +62,8 @@ class YouTubeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Set window icon - add this near the start of __init__
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+        # Set window icon - update icon path
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'logo.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         else:
@@ -384,8 +384,8 @@ def main():
     logging.basicConfig(level=logging.INFO)
     app = QApplication(sys.argv)
     
-    # Set application-wide icon for taskbar
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+    # Set application-wide icon for taskbar - update icon path
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images', 'logo.png')
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
