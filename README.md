@@ -25,8 +25,7 @@
 
 
 ## 📝 Random side notes
-- Click the player to pause/play
-- esc to exit fullscreen once in it
+- Esc or F to exit/enter fullscreen
 - only fullscreens to primary monitor right now
 
 ## 🛠 Installation
