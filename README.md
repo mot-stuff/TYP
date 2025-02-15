@@ -1,6 +1,6 @@
 ![TYP Logo](logo.png)
 
-# 🎬 TYP - Tom's YouTube Premium
+### Tom's YouTube Premium
 
 TYP is an all-in-one YouTube experience that lets you bypass ads, watch videos seamlessly, and manage your downloads—all without unreliable browser extensions. With TYP, you can sync your preferences using your existing Google account while building a personalized algorithm on YouTube.
 
