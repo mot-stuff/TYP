@@ -59,7 +59,7 @@ pip install -r requirements.txt
 
 ### 5️⃣ Run the Application
 ```sh
-python youtube_app.py
+python run.py
 ```
 
 Enjoy an ad-free, premium YouTube experience! 🚀
