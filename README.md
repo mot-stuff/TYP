@@ -1,6 +1,6 @@
 ![TYP Logo](images/logo.png)
 
-**TYP** (Tom's Youtube Premium) is an all-in-one YouTube experience that lets you bypass ads, watch videos seamlessly, and manage your downloads—all without unreliable browser extensions/setting up a pi-hole or other workarounds. With TYP, you can sync your preferences using your existing Google account or by building a personalized algorithm on YouTube.
+**TYP** (Tom's Youtube Premium) is an all-in-one YouTube experience that lets you bypass ads, watch videos seamlessly, and manage your downloads—all without unreliable browser extensions/setting up a pi-hole or other workarounds. With TYP, you can sync your preferences using your existing Google account or by building a personalized algorithm on YouTube that is saved to the application when not signed in.
 
 ## ✨ Features
 - 🚫 **Ad-Free Viewing** – Enjoy YouTube without interruptions.
