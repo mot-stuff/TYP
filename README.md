@@ -10,6 +10,7 @@
 - 🔄 **Sync with Google Account** – Maintain your watch history, recommendations, and subscriptions.
 - 📺 **View Comments/Descriptions** - View comments on videos and descriptions for those that like more information intheir player
 - 🖥️ **Resizable/Fullscreen** - View videos at any aspect ratio - the app is stretchable and can go fullscreen!
+- 📽️ **Dynamic Resolution** - Handles dynamic resolutions always picking the best one!
 
 ## 🪛 Upcoming Features
 - Ability to watch Live Streams and Video Premieres.
