@@ -39,10 +39,11 @@ git clone https://github.com/yourusername/TYP.git
 cd TYP
 ```
 
-### 2️⃣ Install FFmpeg
+### 2️⃣ Install FFmpeg and VLC
 1. [Download FFmpeg](https://ffmpeg.org/download.html).
 2. Extract the contents into the project directory.
 3. Rename the extracted folder to `ffmpeg`.
+4. Download VLC and make sure it is installed! [Download VLC](https://www.videolan.org/vlc/).
 
 ### 3️⃣ Set Up a Virtual Environment
 ```sh
