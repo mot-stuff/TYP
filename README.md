@@ -11,12 +11,12 @@
 - 📺 **View Comments/Descriptions** - View comments on videos and descriptions for those that like more information intheir player
 - 🖥️ **Resizable/Fullscreen** - View videos at any aspect ratio - the app is stretchable and can go fullscreen!
 - 📽️ **Dynamic Resolution** - Handles dynamic resolutions always picking the best one!
+- 🔴 **Live Stream and Premiere Support** - Handles live streams and premieres gracefully!
 
 ## 🪛 Upcoming Features
-- Ability to watch Live Streams and Video Premieres.
 - Download clips of Videos instead of the whole video.
 - Resize media player in saved videos.
-- Fullscreen to active monitor
+- Fullscreen to active monitor instead of just primary
 
 
 ## 📸 Screenshots
