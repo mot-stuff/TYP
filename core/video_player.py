@@ -352,20 +352,39 @@ class CustomVideoPlayer(QWidget):
         painter.end()
         button.setIcon(QIcon(pixmap))
 
-    def toggle_fullscreen(self, event=None):  # Make event optional
-        if self.is_fullscreen:
-            self.video_widget.setFullScreen(False)
-            self.set_white_icon(self.fullscreen_button, QStyle.SP_TitleBarMaxButton)
-        else:
-            self.video_widget.setFullScreen(True)
+    def toggle_fullscreen(self, event=None):
+        """Toggle fullscreen mode by reparenting the video widget."""
+        if not self.is_fullscreen:
+            self.video_widget.setWindowFlags(Qt.Window)
+            self.video_widget.showFullScreen()
+            self.header_widget.hide()
+            self.controls_widget.hide()
+            self.description_widget.hide()
+            self.comments_area.hide()
             self.set_white_icon(self.fullscreen_button, QStyle.SP_TitleBarNormalButton)
-        self.is_fullscreen = not self.is_fullscreen
+            self.is_fullscreen = True
+        else:
+            self.video_widget.setWindowFlags(Qt.Widget)
+            self.video_widget.showNormal()
+            self.header_widget.show()
+            self.controls_widget.show()
+            self.description_widget.show()
+            self.comments_area.show()
+            self.set_white_icon(self.fullscreen_button, QStyle.SP_TitleBarMaxButton)
+            self.is_fullscreen = False
 
     def handle_key_press(self, event):
-        """Handle keyboard events"""
-        if event.key() == Qt.Key_Escape and self.is_fullscreen:
-            self.toggle_fullscreen()
-        event.accept()
+        """Handle keyboard events for toggling fullscreen."""
+        if event.key() in (Qt.Key_Escape, Qt.Key_F):
+            if self.is_fullscreen:
+                self.toggle_fullscreen()
+                event.accept()
+            else:
+                # Allow toggling on fullscreen by pressing F if not already in fullscreen.
+                self.toggle_fullscreen()
+                event.accept()
+        else:
+            event.ignore()
 
     def video_clicked(self, event):
         """Handle mouse clicks on video"""
@@ -574,25 +593,7 @@ class CustomVideoPlayer(QWidget):
         self.media_player.stop()
         self.update_timer.stop()
 
-    def handle_error(self):
-        error = self.media_player.error()
-        error_string = self.media_player.errorString()
-        print(f"Media Player Error {error}: {error_string}")
-        if error == QMediaPlayer.FormatError:
-            print("Format not supported")
-        elif error == QMediaPlayer.NetworkError:
-            print("Network error occurred")
-        elif error == QMediaPlayer.ResourceError:
-            print("Resource cannot be played")
-        elif error == QMediaPlayer.AccessDeniedError:
-            print("Access denied")
 
-    def media_state_changed(self, state):
-        print(f"Media Player State Changed: {state}")
-        if state == QMediaPlayer.PlayingState:
-            self.set_white_icon(self.play_button, QStyle.SP_MediaPause)
-        else:
-            self.set_white_icon(self.play_button, QStyle.SP_MediaPlay)
 
     def set_video_info(self, title, description):
         if (title):
