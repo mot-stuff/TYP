@@ -71,4 +71,4 @@ This project is for educational purposes only and open source. Feel free to modi
 Pull requests are welcome! If you encounter any issues, feel free to submit them via the Issues tab.
 
 ## 📬 Contact
-For support or inquiries, reach out at [your-email@example.com] or open an issue on GitHub.
+For support or inquiries, reach out at [https://discord.gg/safers] or open an issue on GitHub.
