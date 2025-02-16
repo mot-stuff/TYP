@@ -246,11 +246,30 @@ class CustomVideoPlayer(QWidget):
         
         # Add fullscreen button after volume controls
         self.fullscreen_button = QPushButton()
-        self.fullscreen_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarMaxButton))
+        fullscreen_icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images', 'fullscreen.png')
+        if os.path.exists(fullscreen_icon_path):
+            pixmap = QPixmap(fullscreen_icon_path).scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.fullscreen_button.setIcon(QIcon(pixmap))
+        else:
+            self.fullscreen_button.setIcon(self.style().standardIcon(QStyle.SP_TitleBarMaxButton))
         self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
-        self.fullscreen_button.setStyleSheet(button_style)  # Use same style as other buttons
+        self.controls_layout.addWidget(self.fullscreen_button)
+        # NEW: Add theater mode button next to fullscreen
+        self.theater_button = QPushButton()
+        theater_icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images', 'theater.png')
+        if os.path.exists(theater_icon_path):
+            pixmap = QPixmap(theater_icon_path).scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.theater_button.setIcon(QIcon(pixmap))
+        else:
+            self.theater_button.setIcon(self.style().standardIcon(QStyle.SP_DesktopIcon))
+        self.theater_button.setIconSize(QSize(32, 32))
+        self.theater_button.setStyleSheet(button_style)
+        self.theater_button.setCursor(Qt.PointingHandCursor)
+        self.theater_button.setToolTip("Toggle Theater Mode")
+        self.theater_button.clicked.connect(self.toggle_theater_mode)
+        self.controls_layout.addWidget(self.theater_button)
         
-        # Update controls layout
+        # Update controls layout (modify this section to put icons in correct order)
         self.controls_layout.addWidget(self.play_button)
         self.controls_layout.addWidget(self.back_button)
         self.controls_layout.addWidget(self.time_label)
@@ -259,7 +278,9 @@ class CustomVideoPlayer(QWidget):
         self.controls_layout.addWidget(self.forward_button)
         self.controls_layout.addWidget(self.volume_button)
         self.controls_layout.addWidget(self.volume_slider)
-        self.controls_layout.addWidget(self.fullscreen_button)  # Add fullscreen button
+        # Move theater and fullscreen buttons to end
+        self.controls_layout.addWidget(self.theater_button)
+        self.controls_layout.addWidget(self.fullscreen_button)
         
         # Add controls to bottom layout first
         controls_layout.addWidget(self.controls_widget)
@@ -331,11 +352,9 @@ class CustomVideoPlayer(QWidget):
         # Make control icons white
         self.set_white_icon = lambda button, icon_type: self._create_white_icon(button, icon_type)
         
-        self.set_white_icon(self.play_button, QStyle.SP_MediaPlay)
         self.set_white_icon(self.back_button, QStyle.SP_MediaSkipBackward)
         self.set_white_icon(self.forward_button, QStyle.SP_MediaSkipForward)
         self.set_white_icon(self.volume_button, QStyle.SP_MediaVolume)
-        self.set_white_icon(self.fullscreen_button, QStyle.SP_TitleBarMaxButton)
         
         # Style time labels
         time_label_style = "QLabel { color: white; }"
@@ -373,6 +392,11 @@ class CustomVideoPlayer(QWidget):
         self.last_seek_time = 0  # New attribute to track when user last sought
         self.consecutive_buffer_count = 0
         self.is_scrubbing = False
+
+        # Bottom container for controls, description, and comments
+        self.bottom_container = bottom_container  # NEW: store as attribute for theater adjustments
+        # Replace local comments_container with an attribute:
+        self.comments_container = comments_container  # NEW: enable toggling later
 
     def _create_white_icon(self, button, icon_type):
         """Helper method to create white icons"""
@@ -820,3 +844,29 @@ class CustomVideoPlayer(QWidget):
         if back_button:
             back_button.click()
         self.hide()
+
+    def toggle_theater_mode(self):
+        """Toggle theater mode by showing/hiding elements and adjusting layout"""
+        if not hasattr(self, 'is_theater_mode'):
+            self.is_theater_mode = False
+            # Store original height for restoration
+            self.original_height = self.bottom_container.height()
+
+        if not self.is_theater_mode:
+            self.is_theater_mode = True
+            self.description_widget.hide()
+            self.comments_container.hide()
+            # Adjust bottom container to contain only controls
+            self.bottom_container.setFixedHeight(50)  # Fixed control height
+            self.theater_button.setToolTip("Exit Theater Mode")
+        else:
+            self.is_theater_mode = False
+            self.description_widget.show()
+            self.comments_container.show()
+            # Restore original layout
+            self.bottom_container.setFixedHeight(self.original_height)
+            self.theater_button.setToolTip("Theater Mode")
+        
+        # Force layout update
+        self.bottom_container.updateGeometry()
+        self.layout.update()
