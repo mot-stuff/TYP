@@ -2,6 +2,7 @@ import sys
 import re
 import logging
 import os
+import time
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QMenu, QToolButton
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile, QWebEnginePage, QWebEngineSettings
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
@@ -243,12 +244,11 @@ class YouTubeApp(QMainWindow):
         self.browser.setUrl(QUrl("https://www.youtube.com"))
 
     def return_to_youtube(self):
+        self.browser.setUrl(QUrl("https://www.youtube.com")) # always goes back home
         self.video_player.hide()
         self.video_player.stop()
+        time.sleep(1)
         self.browser.page().setAudioMuted(False) # not really needed but just in case
-        
-        # Force navigation to YouTube home
-        self.browser.setUrl(QUrl("https://www.youtube.com")) # always goes back home
         self.browser.show()
 
     def extract_video_id(self, url):
@@ -258,14 +258,32 @@ class YouTubeApp(QMainWindow):
 
     def url_changed(self, url):
         video_id = self.extract_video_id(url.toString())
+        # Ensure we detect a master M3U8 link for live streams:
+        if "m3u8" in url.toString():
+            # Example usage: pass the M3U8 link to the video player
+            m3u8_link = url.toString()
+            self.video_player.play_video([m3u8_link], m3u8_link, is_live=True)
+            self.video_player.show()
+            self.browser.hide()
+            return
         if video_id:
             # Don't navigate away, just mute the browser
             self.browser.page().setAudioMuted(True)
+            self.browser.setUrl(QUrl("https://www.youtube.com")) # always goes back home
             # Then start the video download process
             self.download_and_play_video(video_id)
 
+    def pause_browser_video(self):
+        """Pause any background video playing in the browser."""
+        self.browser.page().runJavaScript(
+            "document.querySelectorAll('video').forEach(v => { v.pause(); v.currentTime = 0; });"
+        )
+    
     def download_and_play_video(self, video_id):
         try:
+            # Prevent background playback:
+            self.pause_browser_video()
+            self.browser.hide()
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             ffmpeg_exe = os.path.join(script_dir, 'ffmpeg', 'bin', 'ffmpeg.exe')
             

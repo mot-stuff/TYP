@@ -1,15 +1,20 @@
+import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                           QSlider, QStyle, QLabel, QSizePolicy, QScrollArea, 
                           QTextBrowser, QToolTip, QApplication, QFileDialog) 
-from PyQt5.QtCore import Qt, QTime, QUrl, QSize, QTimer, QRect, QThread
+from PyQt5.QtCore import Qt, QTime, QUrl, QSize, QTimer, QRect, QThread, pyqtSignal, QMetaObject
 from PyQt5.QtGui import QIcon, QPainter, QColor, QPixmap, QCursor
 import vlc
 import os
 from core.file_explorer import FileExplorerDialog
 from utils.Downloader import Downloader
 import sys
+import base64
+import requests
 # The video player class - absolute cancer to work with so goodluck!
 class CustomVideoPlayer(QWidget):
+    playbackFinished = pyqtSignal()  # Add signal definition
+
     def __init__(self):
         super().__init__()
         # Add always-on-top flag
@@ -113,13 +118,18 @@ class CustomVideoPlayer(QWidget):
         # Add header to main layout
         self.layout.addWidget(self.header_widget)
         
-        # Initialize VLC with simpler parameters
+        # Initialize VLC with adjusted parameters for smoother load:
         vlc_args = [
-            '--audio-resampler=soxr',  # High quality audio resampler
-            '--file-caching=1000',     # Reduced cache to prevent audio lag
+            '--audio-resampler=soxr',
+            '--file-caching=1000',     # lowered caching value
             '--network-caching=1000',
             '--live-caching=1000',
-            '--sout-mux-caching=1000'
+            '--sout-mux-caching=1000',
+            '--clock-jitter=0',
+            '--clock-synchro=0',
+            '--audio-desync=0',
+            '--sout-keep',
+            '--avcodec-hw=none'        # disable hardware acceleration for improved stability
         ]
         
         try:
@@ -136,6 +146,8 @@ class CustomVideoPlayer(QWidget):
         # Set up event manager
         self.event_manager = self.media_player.event_manager()
         self.event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, self.on_playback_finished)
+        # Attach position-changed event to update slider continuously
+        self.event_manager.event_attach(vlc.EventType.MediaPlayerPositionChanged, self.on_position_changed)
         
         # Create container widget for VLC
         self.video_widget = QWidget()
@@ -156,11 +168,13 @@ class CustomVideoPlayer(QWidget):
         self.update_timer.setInterval(100)
         self.update_timer.timeout.connect(self.update_position)
         
-        # Add click handling to video widget
-        self.video_widget.mousePressEvent = self.video_clicked
-        
-        # Add key press handling for fullscreen
-        self.video_widget.keyPressEvent = self.handle_key_press
+        # Optionally disable custom control events for testing:
+        self.use_custom_controls = False  # Set to True to enable custom controls
+        if self.use_custom_controls:
+            # Add custom click handling to video widget
+            self.video_widget.mousePressEvent = self.video_clicked
+            # Add custom key press handling for fullscreen toggle
+            self.video_widget.keyPressEvent = self.handle_key_press
 
         # Bottom container for controls, description, and comments
         bottom_container = QWidget()
@@ -215,7 +229,9 @@ class CustomVideoPlayer(QWidget):
         self.forward_button.clicked.connect(lambda: self.seek_relative(10000))
         
         self.seek_slider = QSlider(Qt.Horizontal)
-        self.seek_slider.sliderMoved.connect(self.set_position)
+        self.seek_slider.sliderPressed.connect(self.on_slider_pressed)
+        self.seek_slider.sliderReleased.connect(self.on_slider_released)
+        self.seek_slider.sliderMoved.connect(self.on_slider_moved)  # NEW: update during scrubbing
         
         # Create volume controls
         self.volume_button = QPushButton()
@@ -344,6 +360,20 @@ class CustomVideoPlayer(QWidget):
             }
         """)
 
+        # Add buffering timer
+        self.buffer_timer = QTimer()
+        self.buffer_timer.setInterval(500)  # Check every 500ms
+        self.buffer_timer.timeout.connect(self.check_buffering)
+        self.is_buffering = False
+        
+        # Track last position for sync checking
+        self.last_position = 0
+        self.stall_count = 0
+
+        self.last_seek_time = 0  # New attribute to track when user last sought
+        self.consecutive_buffer_count = 0
+        self.is_scrubbing = False
+
     def _create_white_icon(self, button, icon_type):
         """Helper method to create white icons"""
         icon = self.style().standardIcon(icon_type)
@@ -435,35 +465,65 @@ class CustomVideoPlayer(QWidget):
         """Seek to the absolute time (in ms) from the slider value"""
         try:
             self.seek_to_time(position)
+            self.last_seek_time = time.time()  # Update whenever user seeks
         except Exception as e:
             print(f"Set position error: {str(e)}")
 
-    def update_position(self):
-        """Update slider range and value using actual video time in ms"""
+    def on_slider_pressed(self):
+        self.is_scrubbing = True
+        self.last_seek_time = time.time()  # Mark the start of scrubbing
+
+    def on_slider_released(self):
+        value = self.seek_slider.value()
+        self.set_position(value)
+        self.is_scrubbing = False
+        # Resume playback if not playing
         if not self.media_player.is_playing():
+            self.media_player.play()
+
+    def on_slider_moved(self, value):
+        """Set video time continuously during scrubbing."""
+        if self.is_scrubbing:
+            self.media_player.set_time(value)
+            self.time_label.setText(self.format_time(value))
+
+    def update_position(self):
+        if not self.media_player.is_playing() or self.is_scrubbing:
+            return
+        # New: check if VLC has reached an ended state (for streaming videos that eventually end)
+        if not self.is_live and self.media_player.get_state() == vlc.State.Ended:
+            self.on_playback_finished(None)
             return
         try:
             current_time = self.media_player.get_time()
+            if self.is_live:
+                return
             total_length = self.media_player.get_length()
-
             if current_time >= 0 and total_length > 0:
-                # Set slider range and current value in milliseconds
                 self.seek_slider.blockSignals(True)
                 self.seek_slider.setMaximum(total_length)
                 self.seek_slider.setValue(current_time)
                 self.seek_slider.blockSignals(False)
-
-                # Update displayed time
                 self.time_label.setText(self.format_time(current_time))
                 self.duration_label.setText(self.format_time(total_length))
-                
-                if current_time % 5000 == 0:  # Every 5 seconds
+                if not self.is_live and current_time >= total_length - 500:
+                    self.stop()
+                    self.hide()
+                    self.playbackFinished.emit()
+                    return
+                if current_time % 5000 == 0:
                     tracks = self.media_player.audio_get_track_description()
                     if tracks and self.media_player.audio_get_track() <= 0:
                         self.media_player.audio_set_track(1)
-                    
         except Exception as e:
-            print(f"Position update error: {str(e)}")
+            print(f"Position update error: {e}")
+
+    def on_position_changed(self, event):
+        # Update slider based on VLC position events
+        current_time = self.media_player.get_time()
+        self.seek_slider.blockSignals(True)
+        self.seek_slider.setValue(current_time)
+        self.seek_slider.blockSignals(False)
 
     def set_volume(self, volume):
         self.media_player.audio_set_volume(volume)
@@ -498,87 +558,114 @@ class CustomVideoPlayer(QWidget):
             self.comments_area.setText("No comments available")
             return
             
-        # Prepare HTML template once
+        # Prepare HTML template with styling for author thumbnail
         html_template = """
         <style>
-            body { color: white; }
-            .comment { margin-bottom: 10px; }
-            .author { font-weight: bold; }
-            .likes { color: #aaa; }
-            .text { margin-top: 5px; }
+            body {
+                font-family: Arial, sans-serif;
+                color: #FFFFFF;
+                background-color: #282828;
+                margin: 0;
+                padding: 10px;
+            }
+            .comment {
+                background: #333;
+                border-radius: 8px;
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            .comment-header {
+                display: flex;
+                align-items: center;
+            }
+            .thumb {
+                margin-right: 5px;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                vertical-align: middle;
+            }
+            .author {
+                font-weight: bold;
+                color: #FF4500;
+                margin-right: 5px;
+            }
+            .likes {
+                color: #AAAAAA;
+                font-size: 12px;
+            }
+            .text {
+                margin-top: 5px;
+                line-height: 1.5;
+            }
         </style>
         """
         
-        # Build comments HTML more efficiently
+        def get_data_uri(url):
+            try:
+                response = requests.get(url)
+                if response.status_code == 200:
+                    data = base64.b64encode(response.content).decode("utf-8")
+                    mime = response.headers.get("Content-Type", "image/png")
+                    return f"data:{mime};base64,{data}"
+            except Exception as e:
+                print(f"Error fetching image: {e}")
+            return "https://via.placeholder.com/40"
+
+        # Build comments HTML with thumbnail conversion
         comments_html = []
         for comment in comments[:10]:
             author = comment.get('author', 'Anonymous')
             text = comment.get('text', '').replace('\n', '<br>')
             likes = comment.get('like_count', 0)
+            thumb_url = comment.get('author_thumbnail', '')
+            thumb = get_data_uri(thumb_url) if thumb_url else "https://via.placeholder.com/20"
             
             comments_html.append(f"""
                 <div class="comment">
-                    <span class="author">{author}</span>
-                    <span class="likes">• {likes} likes</span>
+                    <div class="comment-header">
+                        <img class="thumb" src="{thumb}" alt="thumbnail" width="20" height="20"/>
+                        <span class="author">{author}</span>
+                        <span class="likes">• {likes} likes</span>
+                    </div>
                     <div class="text">{text}</div>
                 </div>
             """)
         
-        # Join all HTML at once
         full_html = html_template + ''.join(comments_html)
         self.comments_area.setHtml(full_html)
 
-    def play_video(self, stream_urls, youtube_url):
-        """Play video with separate stream and share URLs"""
+    def play_video(self, stream_urls, youtube_url, is_live=False):
         try:
             self.current_video_url = stream_urls[0]
             self.youtube_url = youtube_url
+            self.is_live = is_live
 
-            # Common media options
-            media_opts = [
-                f"#duplicate{{"
-                f"dst=display,"
-                f"dst=std{{access=file,mux=wav}}"
-                f"}}"
-            ]
-
-            if len(stream_urls) > 1:
-                # Create a concatenated input string for video and audio
-                input_str = f"input-slave={stream_urls[1]}"
-                media = self.instance.media_new(stream_urls[0], input_str)
-                
-                # Add the media options
-                for opt in media_opts:
-                    media.add_option(opt)
-                
-                # Set the media and start playback
-                self.media_player.set_media(media)
-                self.media_player.audio_set_volume(self.volume_slider.value())
-                
-                # Start playback
-                self.media_player.play()
-                
-                # Force audio track selection after a short delay
-                def select_audio():
-                    tracks = self.media_player.audio_get_track_description()
-                    if tracks:
-                        self.media_player.audio_set_track(1)
-                
-                QTimer.singleShot(500, select_audio)
-                
+            if is_live:
+                media_opts = [
+                    ":demux=hls",
+                    ":live-caching=5000",
+                    ":hls-live-edge=9999"
+                ]
             else:
-                # Single stream playback
-                media = self.instance.media_new(stream_urls[0])
-                for opt in media_opts:
-                    media.add_option(opt)
-                self.media_player.set_media(media)
-                self.media_player.audio_set_volume(self.volume_slider.value())
-                self.media_player.play()
-            
+                # For VOD, expect dual-stream URLs from yt-dlp
+                media_opts = []
+            media = self.instance.media_new(stream_urls[0])
+            # Use bestaudio URL if provided (dual stream 1080p)
+            if len(stream_urls) > 1:
+                media.add_option(f":input-slave={stream_urls[1]}")
+            for opt in media_opts:
+                media.add_option(opt)
+            self.media_player.set_media(media)
+            self.media_player.audio_set_volume(self.volume_slider.value())
+            self.media_player.play()
+
+            # Force audio synchronization check after a longer delay
+            QTimer.singleShot(3000, self.check_audio_sync)
+
             self.update_timer.start()
             self.comments_area.setText("Loading comments...")
-            self.comments_area.setVisible(True)
-            
+            self.buffer_timer.start()
         except Exception as e:
             print(f"Playback error: {str(e)}")
 
@@ -592,10 +679,23 @@ class CustomVideoPlayer(QWidget):
                 self.media_player.audio_set_delay(0)
 
     def stop(self):
+        # Use invokeMethod to stop timers on the correct thread
+        QMetaObject.invokeMethod(self.buffer_timer, "stop", Qt.QueuedConnection)
+        QMetaObject.invokeMethod(self.update_timer, "stop", Qt.QueuedConnection)
         self.media_player.stop()
-        self.update_timer.stop()
 
+    def check_buffering(self):
+        if self.is_live or self.is_scrubbing:
+            self.last_position = self.media_player.get_time()
+            return
+        if not self.media_player.is_playing():
+            return
+        # Removed custom buffering handling; use VLC's default behavior instead.
+        self.last_position = self.media_player.get_time()
 
+    def resume_from_buffer(self):
+        # Auto-resume is disabled; do nothing.
+        pass
 
     def set_video_info(self, title, description):
         if (title):
@@ -711,9 +811,12 @@ class CustomVideoPlayer(QWidget):
         print(f"Download error: {error_message}")
 
     def on_playback_finished(self, event):
-        """Handle video playback completion"""
+        # VLC's MediaPlayerEndReached event triggers this method.
         self.stop()
         self.update_timer.stop()
+        self.playbackFinished.emit()  # Notifies the parent to revert to YouTube view
+        time.sleep(1)
         back_button = self.get_back_button()
-        if (back_button):
+        if back_button:
             back_button.click()
+        self.hide()
