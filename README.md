@@ -9,7 +9,7 @@
 - 📁 **Built-in File Manager** – Organize, play, and manage downloaded content effortlessly.
 - 🔄 **Sync with Google Account** – Maintain your watch history, recommendations, and subscriptions.
 - 📺 **View Comments/Descriptions** - View comments on videos and descriptions for those that like more information intheir player
-- 🖥️ **Resizable/Fullscreen** - View videos at any aspect ratio - the app is stretchable and can go fullscreen!
+- 🖥️ **Resizable/Fullscreen/Theater Mode** - View videos at any aspect ratio - the app is stretchable and can go fullscreen or even use theater mode in app!
 - 📽️ **Dynamic Resolution** - Handles dynamic resolutions always picking the best one!
 - 🔴 **Live Stream and Premiere Support** - Handles live streams and premieres gracefully!
 
